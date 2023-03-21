@@ -1,0 +1,31 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+name: nfs-client
+display-name: NFS Client
+summary: Mount NFS shares on machine charms.
+description: |
+  Mount NFS shares on machine charms.
+  
+  Enables access to remotely-hosted NFS storage appliances.
+maintainers:
+  - Jason C. Nucciarone <jason.nucciarone@canonical.com>
+tags:
+  - filesystem
+  - storage
+  - hpc
+
+subordinate: true
+
+requires:
+  nfs-share:
+    interface: nfs_share
+  juju-info:
+    interface: juju-info
+    scope: container
+peers:
+  nfs-client-peers:
+    interfaces: nfs_client_peers
+
+series:
+  - jammy
