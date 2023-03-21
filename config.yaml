@@ -1,0 +1,44 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+options:
+  nfsvers:
+    description: NFS protocol version to use for connecting to shares.
+    type: string
+  protocol:
+    description: Transport protocol version to use for connecting to shares.
+    type: string
+  mountpoint:
+    description: Location to mount share on machine.
+    type: string
+  port:
+    default: "2049"
+    description: Port number of NFS server.
+    type: string
+  noexec:
+    default: false
+    description: Block execution of binaries on NFS share.
+    type: boolean
+  nosuid:
+    default: false
+    description: Do not honour suid and sgid bits on NFS share.
+    type: boolean
+  nodev:
+    default: false
+    description: Blocking interpretation of character or block devices on NFS share.
+    type: boolean
+  sec:
+    description: Colon-separated list of security flavours to use for accessing files on NFS share.
+    type: string
+  rsize:
+    default: 1048576
+    description: Maximum number of bytes an NFS READ request can contain when reading from the NFS share.
+    type: integer
+  wsize:
+    default: 1048576
+    description: Maximum number of bytes an NFS WRITE request can contain when writing to the NFS share.
+    type: integer
+  read-only:
+    default: false
+    description: Mount NFS shares as read-only.
+    type: boolean
