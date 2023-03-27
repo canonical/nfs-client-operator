@@ -33,11 +33,11 @@ options:
   rsize:
     default: 1048576
     description: Maximum number of bytes an NFS READ request can contain when reading from the NFS share.
-    type: integer
+    type: int
   wsize:
     default: 1048576
     description: Maximum number of bytes an NFS WRITE request can contain when writing to the NFS share.
-    type: integer
+    type: int
   read-only:
     default: false
     description: Mount NFS shares as read-only.
