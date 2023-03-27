@@ -25,7 +25,7 @@ requires:
     scope: container
 peers:
   nfs-client-peers:
-    interfaces: nfs_client_peers
+    interface: nfs_client_peers
 
 series:
   - jammy
