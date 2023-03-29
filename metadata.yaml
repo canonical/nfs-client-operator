@@ -7,7 +7,7 @@ summary: Mount NFS shares on machine charms.
 description: |
   Mount NFS shares on machine charms.
   
-  Enables access to remotely-hosted NFS storage appliances.
+  Enables access to exported NFS shares.
 maintainers:
   - Jason C. Nucciarone <jason.nucciarone@canonical.com>
 tags:
@@ -20,12 +20,10 @@ subordinate: true
 requires:
   nfs-share:
     interface: nfs_share
+    limit: 1
   juju-info:
     interface: juju-info
     scope: container
-peers:
-  nfs-client-peers:
-    interface: nfs_client_peers
 
 series:
   - jammy
