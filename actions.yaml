@@ -1,0 +1,9 @@
+# Copyright 2023 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+force-umount:
+  description: >
+    Forcefully unmount the mounted NFS share if 
+    the NFS server is unreachable. WARNING -
+    forceful unmounts can potentially cause
+    unwanted data corruption.
