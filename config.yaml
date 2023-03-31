@@ -3,21 +3,33 @@
 
 options:
   mountpoint:
-    description: Location to mount share on machine.
+    description: >
+      Location to mount share on machine.
     type: string
+  size:
+    description: >
+      Size, in GB, to make requested NFS share. If omitted,
+      the NFS server will set the default size. If size is
+      set to -1, the created share will be unbounded.
+    type: int
   noexec:
     default: false
-    description: Block execution of binaries on NFS share.
+    description: >
+      Block execution of binaries on NFS share.
     type: boolean
   nosuid:
     default: false
-    description: Do not honour suid and sgid bits on NFS share.
+    description: >
+      Do not honour suid and sgid bits on NFS share.
     type: boolean
   nodev:
     default: false
-    description: Blocking interpretation of character or block devices on NFS share.
+    description: >
+      Blocking interpretation of character and/or block 
+      devices on NFS share.
     type: boolean
   read-only:
     default: false
-    description: Mount NFS shares as read-only.
+    description: >
+      Mount NFS share as read-only.
     type: boolean
