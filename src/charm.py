@@ -6,9 +6,18 @@
 
 import logging
 
-from ops.charm import CharmBase
+import utils.manager as nfs
+from charms.storage_libs.v0.nfs_interfaces import (
+    MountShareEvent,
+    NFSRequires,
+    ServerConnectedEvent,
+    UmountShareEvent,
+)
+from ops.charm import ActionEvent, CharmBase
+from ops.framework import StoredState
 from ops.main import main
-from ops.model import ActiveStatus
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+from utils.status import Status, StatusPool
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +25,195 @@ logger = logging.getLogger(__name__)
 class NFSClientCharm(CharmBase):
     """NFS client charmed operator."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.framework.observe(self.on.start, self._on_start)
+    _stored = StoredState()
 
-    def _on_start(self, event):
-        """Handle start event."""
-        self.unit.status = ActiveStatus()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._status_pool = StatusPool(self)
+        self._stored.set_default(
+            mountpoint=None,
+            size=None,
+            mntopts={"noexec": None, "nosuid": None, "nodev": None, "read-only": None},
+        )
+        self._nfs_share = NFSRequires(self, "nfs-share")
+        self.framework.observe(self.on.install, self._on_install)
+        self.framework.observe(self.on.config_changed, self._on_config_changed)
+        self.framework.observe(self.on.stop, self._on_stop)
+        self.framework.observe(self._nfs_share.on.server_connected, self._on_server_connected)
+        self.framework.observe(self._nfs_share.on.mount_share, self._on_mount_share)
+        self.framework.observe(self._nfs_share.on.umount_share, self._on_umount_share)
+        self.framework.observe(self.on.force_umount_action, self._on_force_umount_action)
+
+    def _on_install(self, _) -> None:
+        """Install `nfs-common` utilities for mounting NFS shares."""
+        self._status_pool.add(
+            Status(
+                label="installing_nfs_common", status=MaintenanceStatus("Installing `nfs-common`")
+            )
+        )
+        try:
+            nfs.install()
+        except nfs.Error as e:
+            self._status_pool.add(Status(label="install_fail", status=BlockedStatus(e.message)))
+
+    def _on_config_changed(self, _) -> None:
+        """Handle updates to NFS client configuration."""
+        mountpoint = self.config.get("mountpoint")
+        if mountpoint is None:
+            self._status_pool.add(
+                Status(label="no_target", status=BlockedStatus("No configured mountpoint"))
+            )
+            return
+
+        if self._stored.mountpoint is None:
+            logger.debug(f"Setting mountpoint as {mountpoint}")
+            self._stored.mountpoint = mountpoint
+            self._status_pool.add(
+                Status(label="waiting", status=WaitingStatus("Waiting for NFS share"))
+            )
+        elif self._stored.mountpoint is not None:
+            logger.warning(f"Mountpoint can only be set once. Ignoring {mountpoint}")
+
+        size = self.config.get("size")
+        if self._stored.size is None:
+            logger.debug(f"Setting NFS share size as {size}")
+            self._stored.size = size
+        elif self._stored.size is not None:
+            logger.warning(f"Size can only be set once. Ignoring {size}")
+
+        for opt, val in self._stored.mntopts.items():
+            new_val = self.config.get(opt)
+            if val is None:
+                self._stored.mntopts[opt] = new_val
+            else:
+                logger.warning(f"{opt} can only be set once. Ignoring {new_val}")
+
+    def _on_stop(self, _) -> None:
+        """Clean up machine before de-provisioning."""
+        if nfs.mounted(mountpoint := self.config.get("mountpoint")):
+            self._status_pool.add(
+                Status(
+                    label="unmounting_share",
+                    _priority=1,
+                    status=MaintenanceStatus(f"Unmounting {mountpoint}"),
+                )
+            )
+            nfs.umount(mountpoint)
+
+        # Only remove `nfs-common` if there are no existing NFS shares outside of charm.
+        if not nfs.mounts():
+            self._status_pool.add(
+                Status(
+                    label="removing_nfs_common",
+                    _priority=2,
+                    status=MaintenanceStatus("Removing `nfs-common`"),
+                )
+            )
+            nfs.remove()
+
+        self._status_pool.add(
+            Status(
+                label="shutting_down", _priority=2, status=MaintenanceStatus("Shutting down...")
+            )
+        )
+
+    def _on_server_connected(self, event: ServerConnectedEvent) -> None:
+        """Handle when client has connected to NFS server."""
+        self._status_pool.add(
+            Status(label="requesting", status=MaintenanceStatus("Requesting NFS share"))
+        )
+        if self._stored.mountpoint is None:
+            logger.warning("Deferring ServerConnectedEvent event because mountpoint is not set")
+            self._status_pool.add(Status(label="no_target"))
+            event.defer()
+            return
+
+        self._nfs_share.request_share(
+            event.relation.id,
+            name=self._stored.mountpoint,
+            size=self._stored.size,
+            allowlist="0.0.0.0/0",
+        )
+
+    def _on_mount_share(self, event: MountShareEvent) -> None:
+        """Mount an NFS share."""
+        try:
+            if not nfs.mounted(event.endpoint):
+                opts = []
+                opts.append("noexec") if self._stored.mntopts["noexec"] else opts.append("exec")
+                opts.append("nosuid") if self._stored.mntopts["nosuid"] else opts.append("suid")
+                opts.append("nodev") if self._stored.mntopts["nodev"] else opts.append("dev")
+                opts.append("ro") if self._stored.mntopts["read-only"] else opts.append("rw")
+                nfs.mount(event.endpoint, self._stored.mountpoint, options=opts)
+            else:
+                logger.warning(f"Endpoint {event.endpoint} already mounted")
+        except nfs.Error as e:
+            self._status_pool.add(Status(label="mount_fail", status=BlockedStatus(e.message)))
+
+        self._status_pool.add(
+            Status(
+                label="share_mounted",
+                status=ActiveStatus(f"NFS share mounted at {self._stored.mountpoint}"),
+            )
+        )
+
+    def _on_umount_share(self, event: UmountShareEvent) -> None:
+        """Umount an NFS share."""
+        self._status_pool.add(
+            Status(
+                label="unmounting",
+                status=MaintenanceStatus(f"Unmounting NFS share at {self._stored.mountpoint}"),
+            )
+        )
+
+        try:
+            if event.endpoint:
+                if mountpoint := nfs.fetch(event.endpoint):
+                    nfs.umount(mountpoint)
+                else:
+                    logger.warning(f"{event.endpoint} is not mounted")
+            else:
+                logger.warning(f"No endpoint provided, defaulting to {self._stored.mountpoint}")
+                if nfs.mounted(self._stored.mountpoint):
+                    nfs.umount(self._stored.mountpoint)
+                else:
+                    logger.warning(f"{self._stored.mountpoint} is not mounted")
+        except nfs.Error as e:
+            self._status_pool.add(Status(label="umount_fail", status=BlockedStatus(e.message)))
+
+        self._status_pool.add(
+            Status(label="waiting", status=WaitingStatus("Waiting for NFS share"))
+        )
+
+    def _on_force_umount_action(self, event: ActionEvent) -> None:
+        """Handle `force-umount` action."""
+        if nfs.mounted(self._stored.mountpoint):
+            self._status_pool.add(
+                label="unmounting_force",
+                status=MaintenanceStatus(
+                    f"Forcefully unmounting NFS share at {self._stored.mountpoint}"
+                ),
+            )
+            try:
+                logger.warning(
+                    (
+                        f"Forcefully unmounting {self._stored.mountpoint}. "
+                        "A forced umount can potentially cause data corruption"
+                    )
+                )
+                nfs.umount(self._stored.mountpoint, force=True)
+                event.set_results({"result": "Forced umount successful"})
+            except nfs.Error as e:
+                self._status_pool.add(
+                    Status(label="umount_force_fail", status=BlockedStatus(e.message))
+                )
+                event.fail(e.message)
+        else:
+            logger.debug(f"{self._stored.mountpoint} is not mounted")
+
+        self._status_pool.add(
+            Status(label="waiting", status=WaitingStatus("Waiting for NFS share"))
+        )
 
 
 if __name__ == "__main__":  # pragma: nocover
