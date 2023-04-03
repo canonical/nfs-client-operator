@@ -1,6 +1,6 @@
 # Charmed NFS Client Operator
 
-> > Warning: This charm is currently under heavy feature development and 
+> Warning: This charm is currently under heavy feature development and 
 > is subject to breaking changes. It should not be used for production-level
 > deployments until a stable version of this charm is released.
 
