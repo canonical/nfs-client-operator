@@ -10,11 +10,18 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
+from urllib.parse import urlparse
 
 import charms.operator_libs_linux.v0.apt as apt
 
 _logger = logging.getLogger(__name__)
+_nfs_url_check = re.compile(
+    r"""
+        nfs://[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()!@:%_+.~#?&/=]*)
+    """,
+    re.VERBOSE,
+)
 _mount_parser = re.compile(
     r"""
         ^(?P<endpoint>\S+?)\s+
@@ -62,6 +69,20 @@ class MountInfo:
     passno: str
 
 
+def _translate(url: str) -> Tuple[str, str]:
+    """Translate an NFS URL to a mount.nfs endpoint.
+
+    Args:
+        url: NFS uniform resource locator (URL)
+
+    Returns:
+        Tuple[str, str]: `mount.nfs`-understandable endpoint and port number.
+    """
+    _logger.debug(f"Converting NFS URL {url} to `mount.nfs` format")
+    nfs_url = urlparse(url)
+    return f"{nfs_url.hostname}:{nfs_url.path}", nfs_url.port
+
+
 def install() -> None:
     """Install NFS utilities for mounting NFS shares.
 
@@ -73,7 +94,7 @@ def install() -> None:
         apt.update()
         apt.add_package("nfs-common")
     except (apt.PackageError, apt.PackageNotFoundError) as e:
-        _logger.critical(f"Failed to install `nfs-common` package. Reason\n:{e.message}")
+        _logger.error(f"Failed to install `nfs-common` package. Reason\n:{e.message}")
         raise Error(e.message)
 
 
@@ -95,6 +116,12 @@ def fetch(target: str) -> Optional[MountInfo]:
     Returns:
         Optional[MountInfo]: Mount information. None if NFS share is not mounted.
     """
+    # Check if target is NFS URL. If so, convert to `mount.nfs` endpoint format
+    # since that is what is stored in /proc/mounts.
+    if _nfs_url_check.match(target):
+        target, port = _translate(target)
+
+    # Read /proc/mounts to get current NFS mount information.
     with pathlib.Path("/proc/mounts").open(mode="rt") as mounts:
         for mount in mounts.read().splitlines():
             if nfs_mount := _mount_parser.search(mount):
@@ -144,12 +171,20 @@ def mount(
     Raises:
         Error: Raised if NFS share mount operation fails.
     """
+    # Convert NFS URL to `mount.nfs` format if endpoint is NFS URL.
+    if _nfs_url_check.match(endpoint):
+        endpoint, port = _translate(endpoint)
+    else:
+        port = None
+
     if not (target := pathlib.Path(mountpoint)).exists():
         _logger.debug(f"Creating mountpoint {target}")
         target.mkdir()
 
     cmd = ["mount", "-t", "nfs"]
     if options:
+        if port:
+            options.append(f"port={port}")
         cmd.extend(["-o", ",".join(options)])
     cmd.extend([endpoint, target])
     try:
