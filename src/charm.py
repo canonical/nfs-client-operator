@@ -117,12 +117,11 @@ class NFSClientCharm(CharmBase):
                 opts.append("nodev") if self._stored.mntopts["nodev"] else opts.append("dev")
                 opts.append("ro") if self._stored.mntopts["read-only"] else opts.append("rw")
                 nfs.mount(event.endpoint, self._stored.mountpoint, options=opts)
+                self.unit.status = ActiveStatus(f"NFS share mounted at {self._stored.mountpoint}")
             else:
                 logger.warning(f"Endpoint {event.endpoint} already mounted")
         except nfs.Error as e:
             self.unit.status = BlockedStatus(e.message)
-
-        self.unit.status = ActiveStatus(f"NFS share mounted at {self._stored.mountpoint}")
 
     def _on_umount_share(self, event: UmountShareEvent) -> None:
         """Umount an NFS share."""
@@ -139,10 +138,10 @@ class NFSClientCharm(CharmBase):
                     nfs.umount(self._stored.mountpoint)
                 else:
                     logger.warning(f"{self._stored.mountpoint} is not mounted")
+
+            self.unit.status = WaitingStatus("Waiting for NFS share")
         except nfs.Error as e:
             self.unit.status = BlockedStatus(e.message)
-
-        self.unit.status = WaitingStatus("Waiting for NFS share")
 
     def _on_force_umount_action(self, event: ActionEvent) -> None:
         """Handle `force-umount` action."""
