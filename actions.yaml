@@ -7,3 +7,11 @@ force-umount:
     the NFS server is unreachable. WARNING -
     forceful unmounts can potentially cause
     unwanted data corruption.
+  params:
+    mountpoint:
+      type: string
+      description: >
+        Mountpoint to forcefully unmount. Must match the mounted 
+        mountpoint inside the nfs-client operator.
+  required: [mountpoint]
+  additionalProperties: false
