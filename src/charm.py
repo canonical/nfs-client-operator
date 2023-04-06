@@ -17,7 +17,6 @@ from ops.charm import ActionEvent, CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
-from utils.status import Status, StatusPool
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,6 @@ class NFSClientCharm(CharmBase):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._status_pool = StatusPool(self)
         self._stored.set_default(
             mountpoint=None,
             size=None,
@@ -46,31 +44,23 @@ class NFSClientCharm(CharmBase):
 
     def _on_install(self, _) -> None:
         """Install `nfs-common` utilities for mounting NFS shares."""
-        self._status_pool.add(
-            Status(
-                label="installing_nfs_common", status=MaintenanceStatus("Installing `nfs-common`")
-            )
-        )
+        self.unit.status = MaintenanceStatus("Installing `nfs-common`")
         try:
             nfs.install()
         except nfs.Error as e:
-            self._status_pool.add(Status(label="install_fail", status=BlockedStatus(e.message)))
+            self.unit.status = BlockedStatus(e.message)
 
     def _on_config_changed(self, _) -> None:
         """Handle updates to NFS client configuration."""
         mountpoint = self.config.get("mountpoint")
         if mountpoint is None:
-            self._status_pool.add(
-                Status(label="no_target", status=BlockedStatus("No configured mountpoint"))
-            )
+            self.unit.status = BlockedStatus("No configured mountpoint")
             return
 
         if self._stored.mountpoint is None:
             logger.debug(f"Setting mountpoint as {mountpoint}")
             self._stored.mountpoint = mountpoint
-            self._status_pool.add(
-                Status(label="waiting", status=WaitingStatus("Waiting for NFS share"))
-            )
+            self.unit.status = WaitingStatus("Waiting for NFS share")
         elif self._stored.mountpoint is not None:
             logger.warning(f"Mountpoint can only be set once. Ignoring {mountpoint}")
 
@@ -91,40 +81,22 @@ class NFSClientCharm(CharmBase):
     def _on_stop(self, _) -> None:
         """Clean up machine before de-provisioning."""
         if nfs.mounted(mountpoint := self.config.get("mountpoint")):
-            self._status_pool.add(
-                Status(
-                    label="unmounting_share",
-                    _priority=1,
-                    status=MaintenanceStatus(f"Unmounting {mountpoint}"),
-                )
-            )
+            self.unit.status = MaintenanceStatus(f"Unmounting {mountpoint}")
             nfs.umount(mountpoint)
 
         # Only remove `nfs-common` if there are no existing NFS shares outside of charm.
         if not nfs.mounts():
-            self._status_pool.add(
-                Status(
-                    label="removing_nfs_common",
-                    _priority=2,
-                    status=MaintenanceStatus("Removing `nfs-common`"),
-                )
-            )
+            self.unit.status = MaintenanceStatus("Removing `nfs-common`")
             nfs.remove()
 
-        self._status_pool.add(
-            Status(
-                label="shutting_down", _priority=2, status=MaintenanceStatus("Shutting down...")
-            )
-        )
+        self.unit.status = MaintenanceStatus("Shutting down...")
 
     def _on_server_connected(self, event: ServerConnectedEvent) -> None:
         """Handle when client has connected to NFS server."""
-        self._status_pool.add(
-            Status(label="requesting", status=MaintenanceStatus("Requesting NFS share"))
-        )
+        self.unit.status = MaintenanceStatus("Requesting NFS share")
         if self._stored.mountpoint is None:
             logger.warning("Deferring ServerConnectedEvent event because mountpoint is not set")
-            self._status_pool.add(Status(label="no_target"))
+            self.unit.status = BlockedStatus("No configured mountpoint")
             event.defer()
             return
 
@@ -148,28 +120,17 @@ class NFSClientCharm(CharmBase):
             else:
                 logger.warning(f"Endpoint {event.endpoint} already mounted")
         except nfs.Error as e:
-            self._status_pool.add(Status(label="mount_fail", status=BlockedStatus(e.message)))
+            self.unit.status = BlockedStatus(e.message)
 
-        self._status_pool.add(
-            Status(
-                label="share_mounted",
-                status=ActiveStatus(f"NFS share mounted at {self._stored.mountpoint}"),
-            )
-        )
+        self.unit.status = ActiveStatus(f"NFS share mounted at {self._stored.mountpoint}")
 
     def _on_umount_share(self, event: UmountShareEvent) -> None:
         """Umount an NFS share."""
-        self._status_pool.add(
-            Status(
-                label="unmounting",
-                status=MaintenanceStatus(f"Unmounting NFS share at {self._stored.mountpoint}"),
-            )
-        )
-
+        self.unit.status = MaintenanceStatus(f"Unmounting NFS share at {self._stored.mountpoint}")
         try:
             if event.endpoint:
-                if mountpoint := nfs.fetch(event.endpoint):
-                    nfs.umount(mountpoint)
+                if mount_info := nfs.fetch(event.endpoint):
+                    nfs.umount(mount_info.mountpoint)
                 else:
                     logger.warning(f"{event.endpoint} is not mounted")
             else:
@@ -179,20 +140,18 @@ class NFSClientCharm(CharmBase):
                 else:
                     logger.warning(f"{self._stored.mountpoint} is not mounted")
         except nfs.Error as e:
-            self._status_pool.add(Status(label="umount_fail", status=BlockedStatus(e.message)))
+            self.unit.status = BlockedStatus(e.message)
 
-        self._status_pool.add(
-            Status(label="waiting", status=WaitingStatus("Waiting for NFS share"))
-        )
+        self.unit.status = WaitingStatus("Waiting for NFS share")
 
     def _on_force_umount_action(self, event: ActionEvent) -> None:
         """Handle `force-umount` action."""
-        if nfs.mounted(self._stored.mountpoint):
-            self._status_pool.add(
-                label="unmounting_force",
-                status=MaintenanceStatus(
-                    f"Forcefully unmounting NFS share at {self._stored.mountpoint}"
-                ),
+        if (
+            nfs.mounted(self._stored.mountpoint)
+            and self._stored.mountpoint == event.params["mountpoint"]
+        ):
+            self.unit.status = MaintenanceStatus(
+                f"Forcefully unmounting NFS share at {self._stored.mountpoint}"
             )
             try:
                 logger.warning(
@@ -202,18 +161,23 @@ class NFSClientCharm(CharmBase):
                     )
                 )
                 nfs.umount(self._stored.mountpoint, force=True)
+                self.unit.status = WaitingStatus("Waiting for NFS share")
                 event.set_results({"result": "Forced umount successful"})
             except nfs.Error as e:
-                self._status_pool.add(
-                    Status(label="umount_force_fail", status=BlockedStatus(e.message))
-                )
+                self.unit.status = BlockedStatus(e.message)
                 event.fail(e.message)
         else:
-            logger.debug(f"{self._stored.mountpoint} is not mounted")
-
-        self._status_pool.add(
-            Status(label="waiting", status=WaitingStatus("Waiting for NFS share"))
-        )
+            if self._stored.mountpoint != event.params["mountpoint"]:
+                logger.debug(
+                    message := (
+                        f"Mountpoint {self._stored.mountpoint} does not equal "
+                        f"specified mountpoint {event.params['mountpoint']}"
+                    )
+                )
+                event.fail(message)
+            else:
+                logger.debug(message := f"{self._stored.mountpoint} is not mounted")
+                event.fail(message)
 
 
 if __name__ == "__main__":  # pragma: nocover
