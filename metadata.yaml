@@ -8,6 +8,8 @@ description: |
   Mount NFS shares on machine charms.
   
   Enables access to exported NFS shares.
+source: https://github.com/canonical/nfs-client-operator
+issues: https://github.com/canonical/nfs-client-operator/issues
 maintainers:
   - Jason C. Nucciarone <jason.nucciarone@canonical.com>
 tags:
