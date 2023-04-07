@@ -83,6 +83,22 @@ def _translate(url: str) -> Tuple[str, str]:
     return f"{nfs_url.hostname}:{nfs_url.path}", nfs_url.port
 
 
+def supported() -> bool:
+    """Check if underlying base supports mounting NFS shares."""
+    try:
+        result = subprocess.run(
+            ["systemd-detect-virt"], stdout=subprocess.PIPE, check=True, text=True
+        )
+        if "lxc" in result.stdout:
+            # Cannot mount NFS shares inside LXD containers.
+            return False
+        else:
+            return True
+    except subprocess.CalledProcessError:
+        _logger.warning("Could not detect execution in virtualized environment")
+        return True
+
+
 def install() -> None:
     """Install NFS utilities for mounting NFS shares.
 
@@ -192,6 +208,8 @@ def mount(
         subprocess.run(cmd, stderr=subprocess.PIPE, check=True, text=True)
     except subprocess.CalledProcessError as e:
         _logger.error(f"{e} Reason:\n{e.stderr}")
+        if "Operation not permitted" in e.stderr and not supported():
+            raise Error("Mounting NFS shares not supported on LXD containers")
         raise Error(f"Failed to mount {endpoint} at {target}")
 
 
