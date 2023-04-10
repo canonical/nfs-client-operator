@@ -2,6 +2,8 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+"""Test base charm events such as Install, Stop, etc."""
+
 import unittest
 from unittest.mock import PropertyMock, patch
 
