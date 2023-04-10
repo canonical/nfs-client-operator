@@ -60,8 +60,8 @@ class NFSClientCharm(CharmBase):
         if self._stored.mountpoint is None:
             logger.debug(f"Setting mountpoint as {mountpoint}")
             self._stored.mountpoint = mountpoint
-            self.unit.status = WaitingStatus("Waiting for NFS share")
         elif self._stored.mountpoint is not None:
+            self.unit.status = WaitingStatus("Already set")
             logger.warning(f"Mountpoint can only be set once. Ignoring {mountpoint}")
 
         size = self.config.get("size")
@@ -77,6 +77,8 @@ class NFSClientCharm(CharmBase):
                 self._stored.mntopts[opt] = new_val
             else:
                 logger.warning(f"{opt} can only be set once. Ignoring {new_val}")
+
+        self.unit.status = WaitingStatus("Waiting for NFS share")
 
     def _on_stop(self, _) -> None:
         """Clean up machine before de-provisioning."""
