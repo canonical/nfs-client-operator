@@ -5,7 +5,7 @@
 """Test nfs-share integration."""
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import ops.testing
 import utils.manager as nfs
