@@ -36,7 +36,7 @@ async def test_build_and_deploy(
             str(await nfs_client_charm),
             application_name=NFS_CLIENT,
             config={"mountpoint": "/data"},
-            num_units=None,
+            num_units=0,
             base=charm_base,
         ),
         ops_test.model.deploy(
