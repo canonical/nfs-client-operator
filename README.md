@@ -1,51 +1,62 @@
-# Charmed NFS Client Operator
+<div align="center">
 
-> Warning: This charm is currently under heavy feature development and 
-> is subject to breaking changes. It should not be used for production-level
-> deployments until a stable version of this charm is released.
+# NFS client operator
 
-## Description
+A subordinate [Juju](https://juju.is) operator for requesting and mounting exported NFS shares on virtual machines. 
 
-This subordinate charmed operator manages instantiation and 
-operations specific to client environments that mount exported NFS shares.
+[![Charmhub Badge](https://charmhub.io/nfs-client/badge.svg)](https://charmhub.io/nfs-client)
+[![CI](https://github.com/canonical/nfs-client-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/canonical/nfs-client-operator/actions/workflows/ci.yaml/badge.svg)
+[![Release](https://github.com/canonical/nfs-client-operator/actions/workflows/release.yaml/badge.svg)](https://github.com/canonical/nfs-client-operator/actions/workflows/release.yaml/badge.svg)
+[![Matrix](https://img.shields.io/matrix/ubuntu-hpc%3Amatrix.org?logo=matrix&label=ubuntu-hpc)](https://matrix.to/#/#ubuntu-hpc:matrix.org)
 
-Network File System (NFS) is a distributed file system protocol for
-sharing files between heterogeneous environments over a network. This
-charm embeds the `nfs-common` package that contains several NFS support
-files common to both NFS clients and serves. This charmed operator uses
-these support files to mount exported NFS shares.
+</div>
 
-This charm operator is also a subordinate charm, so it must be integrated with
-a principle charm to be fully deployed. Also, this charm should not be deployed 
-on top of LXD container-based substrates as LXD containers need to be 
-super-privileged and have several AppArmor profile modifications to successfully 
-mount NFS shares.
+## Features
+
+The NFS client operator requests and mounts exported NFS shares on virtual machines. This operator embeds the `nfs-common` 
+package which contains several support files common to both NFS clients and servers. Network File System (NFS) itself is a 
+distributed file system protocol for sharing files between heterogeneous environments over a network.
 
 ## Usage
 
-_Work-in-progress..._
+NFS client operator is a subordinate operator; it must be integrated with a principle operator for 
+it to deploy successfully. For more information on how Juju operators work and how manage them, please refer to 
+the [Juju documentation](https://juju.is/docs/juju/manage-applications). This operator should be used with 
+Juju 3.x or greater.
 
-## Integrations
+#### With NFS server proxy operator
 
-### _`nfs-share`_
+```shell
+$ juju deploy nfs-server-proxy --config endpoint=nfs://12.34.56.78/data
+$ juju deploy nfs-client data --config mountpoint=/data
+$ juju deploy ubuntu base --base ubuntu@22.04
+$ juju integrate data:juju-info base:juju-info
+$ juju integrate data:nfs-share nfs-server-proxy:nfs-server-proxy
+```
 
-Integrate an NFS server and client over the `nfs_share` interface. This integration
-is used to request NFS shares and inform the client when to mount or unmount an
-exported NFS share.
+#### With LXD containers
 
-### _`juju-info`_
+If you are deploying Juju operators to an LXD container-based cloud substrate, you must modify the default LXD profile. 
+The LXD containers must be super-privileged and have their AppArmor profile modified to allow `nfs` and `rpc_pipefs` mounts 
+to successfully mount NFS shares. You can use the following commands to modify the default LXD profile to allow NFS mounts:
 
-Integrate Charmed NFS Client Operator with a principle charm.
+```shell
+$ lxc profile set default security.privileged true
+$ lxc profile set default raw.apparmor 'mount fstype=nfs*, mount fstype=rpc_pipefs'
+```
 
-## Contributing
+## Project & Community
 
-Please see the [Juju SDK docs](https://juju.is/docs/sdk) for guidelines on 
-enhancements to this charm following best practice guidelines, and 
-CONTRIBUTING.md for developer guidance.
+The NFS client operator is a project of the [Ubuntu HPC](https://discourse.ubuntu.com/t/high-performance-computing-team/35988) 
+community. It is an open source project that is welcome to community involvement, contributions, suggestions, fixes, and 
+constructive feedback. Interested in being involved with the development of the NFS client operator? Check out these links below:
+
+* [Join our online chat](https://matrix.to/#/#ubuntu-hpc:matrix.org)
+* [Contributing guidelines](./CONTRIBUTING.md)
+* [Code of conduct](https://ubuntu.com/community/ethos/code-of-conduct)
+* [File a bug report](https://github.com/canonical/nfs-client-operator/issues)
+* [Juju SDK docs](https://juju.is/docs/sdk)
 
 ## License
 
-The Charmed NFS Client Operator is free software, distributed under the Apache
-Software License, version 2.0. See LICENSE for more information. It embeds
-the `nfs-common` package, which contains files [licensed](http://git.linux-nfs.org/?p=steved/nfs-utils.git;a=blob;f=COPYING;h=941c87de278af88468e104290d62809713ee9ab3;hb=HEAD) 
-under the GNU GPLv2 license.
+The NFS client operator is free software, distributed under the Apache Software License, version 2.0. See the [LICENSE](./LICENSE) file for more information.
