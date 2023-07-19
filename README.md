@@ -1,12 +1,8 @@
-<h1 align="center">
-  NFS client operator
-</h1>
-
-<p align="center">
-  A subordinate Juju operator for requesting and mounting exported NFS shares on virtual machines. 
-</p>
-
 <div align="center">
+
+# NFS client operator
+
+A subordinate [Juju](https://juju.is) operator for requesting and mounting exported NFS shares on virtual machines. 
 
 [![Charmhub Badge](https://charmhub.io/nfs-client/badge.svg)](https://charmhub.io/nfs-client)
 [![CI](https://github.com/canonical/nfs-client-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/canonical/nfs-client-operator/actions/workflows/ci.yaml/badge.svg)
@@ -23,9 +19,10 @@ distributed file system protocol for sharing files between heterogeneous environ
 
 ## Usage
 
-NFS client operator is a subordinate operator which means that it must be integrated with a principle operator for 
-it to deploy successfully. For more information on how Juju operators work and how to use them, please refer to 
-the [Juju documentation](https://juju.is/docs/juju).
+NFS client operator is a subordinate operator; it must be integrated with a principle operator for 
+it to deploy successfully. For more information on how Juju operators work and how manage them, please refer to 
+the [Juju documentation](https://juju.is/docs/juju/manage-applications). This operator should be used with 
+Juju 3.x or greater.
 
 #### With NFS server proxy operator
 
