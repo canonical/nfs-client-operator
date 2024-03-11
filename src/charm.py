@@ -42,9 +42,12 @@ class NFSClientCharm(CharmBase):
         self.framework.observe(self._nfs_share.on.umount_share, self._on_umount_share)
         self.framework.observe(self.on.force_umount_action, self._on_force_umount_action)
 
+        # ensures the required packages are installed after a `juju refresh`.
+        self.framework.observe(self.on.upgrade_charm, self._on_install)
+
     def _on_install(self, _) -> None:
-        """Install `nfs-common` utilities for mounting NFS shares."""
-        self.unit.status = MaintenanceStatus("Installing `nfs-common`")
+        """Install required packages for mounting NFS shares."""
+        self.unit.status = MaintenanceStatus("Installing required packages")
         try:
             nfs.install()
         except nfs.Error as e:
@@ -86,9 +89,9 @@ class NFSClientCharm(CharmBase):
             self.unit.status = MaintenanceStatus(f"Unmounting {mountpoint}")
             nfs.umount(mountpoint)
 
-        # Only remove `nfs-common` if there are no existing NFS shares outside of charm.
+        # Only remove the required packages if there are no existing NFS shares outside of charm.
         if not nfs.mounts():
-            self.unit.status = MaintenanceStatus("Removing `nfs-common`")
+            self.unit.status = MaintenanceStatus("Removing required packages")
             nfs.remove()
 
         self.unit.status = MaintenanceStatus("Shutting down...")
@@ -161,7 +164,7 @@ class NFSClientCharm(CharmBase):
                         "A forced umount can potentially cause data corruption"
                     )
                 )
-                nfs.umount(self._stored.mountpoint, force=True)
+                nfs.umount(self._stored.mountpoint)
                 self.unit.status = WaitingStatus("Waiting for NFS share")
                 event.set_results({"result": "Forced umount successful"})
             except nfs.Error as e:

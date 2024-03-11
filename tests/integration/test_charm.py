@@ -12,6 +12,7 @@ from typing import Any, Coroutine
 import pytest
 import tenacity
 from helpers import bootstrap_nfs_server, modify_default_profile
+from pylxd import Client
 from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,29 @@ async def test_share_active(ops_test: OpsTest) -> None:
     """Test that NFS share is successfully mounted on principle base charm."""
     logger.info(f"Checking that /data is mounted on principle charm {BASE}")
     base_unit = ops_test.model.applications[BASE].units[0]
+    result = (await base_unit.ssh("ls /data")).strip("\n")
+    assert "test-1" in result
+    assert "test-2" in result
+    assert "test-3" in result
+
+
+@pytest.mark.abort_on_fail
+@pytest.mark.order(3)
+async def test_automount_on_reboot(ops_test: OpsTest) -> None:
+    """Test that NFS share is automatically remounted after a server reboot."""
+    base_unit = ops_test.model.applications[BASE].units[0]
+    instance_id = base_unit.machine.safe_data["instance-id"]
+
+    logger.info(f"Restarting machine {instance_id} for principle charm {BASE}")
+    client = Client()
+    instance = client.instances.get(instance_id)
+    instance.restart(force=False, wait=True)
+
+    # App does NOT immediately become active after an instance restart.
+    # We need to let the app stabilize itself.
+    await ops_test.model.wait_for_idle(apps=[BASE], status="active", timeout=1000)
+
+    logger.info(f"Checking that /data has been remounted on principle charm {BASE}")
     result = (await base_unit.ssh("ls /data")).strip("\n")
     assert "test-1" in result
     assert "test-2" in result
