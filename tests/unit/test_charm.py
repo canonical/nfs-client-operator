@@ -29,13 +29,29 @@ class TestCharm(unittest.TestCase):
         """Test that nfs-client can successfully be installed."""
         self.harness.charm.on.install.emit()
         self.assertEqual(
-            self.harness.model.unit.status, MaintenanceStatus("Installing `nfs-common`")
+            self.harness.model.unit.status, MaintenanceStatus("Installing required packages")
         )
 
     @patch("utils.manager.install", side_effect=nfs.Error("Failed to install `nfs-common`"))
     def test_install_fail(self, _) -> None:
         """Test that nfs-client install fail handler works."""
         self.harness.charm.on.install.emit()
+        self.assertEqual(
+            self.harness.model.unit.status, BlockedStatus("Failed to install `nfs-common`")
+        )
+
+    @patch("utils.manager.install")
+    def test_upgrade_charm(self, _) -> None:
+        """Test that nfs-client installs packages after upgrade."""
+        self.harness.charm.on.upgrade_charm.emit()
+        self.assertEqual(
+            self.harness.model.unit.status, MaintenanceStatus("Installing required packages")
+        )
+
+    @patch("utils.manager.install", side_effect=nfs.Error("Failed to install `nfs-common`"))
+    def test_upgrade_charm_fail(self, _) -> None:
+        """Test that nfs-client install fail handler on upgrade works."""
+        self.harness.charm.on.upgrade_charm.emit()
         self.assertEqual(
             self.harness.model.unit.status, BlockedStatus("Failed to install `nfs-common`")
         )
