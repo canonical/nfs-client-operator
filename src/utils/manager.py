@@ -6,23 +6,17 @@
 import logging
 import os
 import pathlib
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from ipaddress import AddressValueError, IPv6Address
 from typing import Iterator, List, Optional, Tuple, Union
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 import charms.operator_libs_linux.v0.apt as apt
 import charms.operator_libs_linux.v1.systemd as systemd
 
 _logger = logging.getLogger(__name__)
-_nfs_url_check = re.compile(
-    r"""
-        nfs://[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()!@:%_+.~#?&/=]*)
-    """,
-    re.VERBOSE,
-)
 
 
 class Error(Exception):
@@ -59,18 +53,34 @@ class MountInfo:
     passno: str
 
 
-def _translate(url: str) -> Tuple[str, str]:
+def _translate(url: str) -> Optional[Tuple[str, Optional[int]]]:
     """Translate an NFS URL to a mount.nfs endpoint.
 
     Args:
         url: NFS uniform resource locator (URL)
 
     Returns:
-        Tuple[str, str]: `mount.nfs`-understandable endpoint and port number.
+        `mount.nfs`-understandable endpoint and port number. `None` if the NFS URL is invalid.
     """
-    _logger.debug(f"Converting NFS URL {url} to `mount.nfs` format")
-    nfs_url = urlparse(url)
-    return f"{nfs_url.hostname}:{nfs_url.path}", nfs_url.port
+    _logger.debug(f"Translating NFS URL {url} to `mount.nfs` format")
+
+    try:
+        nfs_url = urlsplit(url)
+        host = nfs_url.hostname
+        port = nfs_url.port
+    except ValueError:
+        return
+
+    if not host or nfs_url.fragment or nfs_url.query or nfs_url.scheme != "nfs":
+        return
+
+    try:
+        # IPv6 addresses require square brackets.
+        IPv6Address(host)
+        return f"[{host}]:{nfs_url.path}", port
+    except AddressValueError:
+        # Hostname is not an IPv6 address.
+        return f"{host}:{nfs_url.path}", port
 
 
 def supported() -> bool:
@@ -128,10 +138,9 @@ def fetch(target: str) -> Optional[MountInfo]:
     Returns:
         Optional[MountInfo]: Mount information. None if NFS share is not mounted.
     """
-    # Check if target is NFS URL. If so, convert to `mount.nfs` endpoint format
-    # since that is what is stored in /proc/mounts.
-    if _nfs_url_check.match(target):
-        target, port = _translate(target)
+    # Translate to `mount.nfs` endpoint format, since that is what is stored in /proc/mounts.
+    if endpoint := _translate(target):
+        target, _port = endpoint
 
     # We need to trigger an automount for the mounts that are of type `autofs`,
     # since those could contain a `nfs` or `nfs4` mount.
@@ -177,11 +186,13 @@ def mount(
     Raises:
         Error: Raised if the mount operation fails.
     """
-    # Convert `endpoint` to the `mount.nfs` format if `endpoint` is an NFS URL.
-    if _nfs_url_check.match(endpoint):
-        endpoint, port = _translate(endpoint)
+    # Translate `endpoint` to the `mount.nfs` format if `endpoint` is an NFS URL.
+    # The relation provider must ensure the endpoint is a valid NFS URL.
+    if tl := _translate(endpoint):
+        endpoint, port = tl
     else:
-        port = None
+        _logger.error(f"Cannot translate invalid endpoint url {endpoint}")
+        raise Error(f"Cannot translate invalid endpoint url {endpoint}")
 
     # Try to create the mountpoint without checking if it exists to avoid TOCTOU.
     target = pathlib.Path(mountpoint)
@@ -230,7 +241,7 @@ def umount(mountpoint: Union[str, os.PathLike]) -> None:
         systemd.service_reload("autofs", restart_on_failure=True)
     except systemd.SystemdError as e:
         _logger.error(f"Failed to unmount {mountpoint}. Reason:\n{e}")
-        raise Error(f"Failed to unmount {mountpoint}.")
+        raise Error(f"Failed to unmount {mountpoint}")
 
     shutil.rmtree(mountpoint, ignore_errors=True)
 
@@ -252,7 +263,7 @@ def _trigger_autofs() -> None:
 
 
 def _mountpoint_to_autofs_id(mountpoint: Union[str, os.PathLike]) -> str:
-    """Converts a mountpoint to its corresponding autofs id.
+    """Get the autofs id of a mountpoint path.
 
     Args:
         mountpoint: NFS share mountpoint.
