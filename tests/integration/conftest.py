@@ -16,12 +16,19 @@ def pytest_addoption(parser: Parser) -> None:
     parser.addoption(
         "--charm-base", action="store", default="ubuntu@22.04", help="Charm base to test."
     )
+    parser.addoption("--ipv6", action="store_true", default=False, help="Use IPv6 for addresses.")
 
 
 @pytest.fixture(scope="module")
 def charm_base(request) -> str:
     """Get nfs-client charm series to use."""
     return request.config.getoption("--charm-base")
+
+
+@pytest.fixture(scope="module")
+def use_ipv6(request) -> bool:
+    """Get if tests should use IPv6 for addresses."""
+    return request.config.getoption("--ipv6")
 
 
 @pytest.fixture(scope="module")

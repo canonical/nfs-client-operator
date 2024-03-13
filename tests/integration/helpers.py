@@ -11,8 +11,8 @@ from pylxd import Client
 _logger = logging.getLogger(__name__)
 
 
-def modify_default_profile() -> None:
-    """Modify the default LXD profile."""
+def modify_lxd_config(use_ipv6: bool) -> None:
+    """Modify the LXD config."""
     client = Client()
     config = {
         "security.privileged": "true",
@@ -23,8 +23,17 @@ def modify_default_profile() -> None:
     default.config.update(config)
     default.save()
 
+    network = client.networks.get("lxdbr0")
+    if use_ipv6:
+        _logger.info("Enabling ipv6 addresses on network lxdbr0")
+        network.config["ipv6.address"] = "auto"
+    else:
+        _logger.info("Disabling ipv6 addresses on network lxdbr0")
+        network.config["ipv6.address"] = "none"
+    network.save()
 
-def bootstrap_nfs_server() -> str:
+
+def bootstrap_nfs_server(use_ipv6: bool) -> str:
     """Bootstrap a minimal NFS kernel server in LXD.
 
     Returns:
@@ -35,8 +44,11 @@ def bootstrap_nfs_server() -> str:
     if client.instances.exists("nfs-server"):
         _logger.info("NFS server already exists")
         instance = client.instances.get("nfs-server")
-        address = instance.state().network["eth0"]["addresses"][0]["address"]
-        endpoint = f"nfs://{address}/data"
+        address = instance.state().network["eth0"]["addresses"][int(use_ipv6)]["address"]
+        if use_ipv6:
+            endpoint = f"nfs://[{address}]/data"
+        else:
+            endpoint = f"nfs://{address}/data"
         _logger.info(f"NFS share endpoint is {endpoint}")
         return endpoint
 
@@ -80,7 +92,10 @@ def bootstrap_nfs_server() -> str:
     instance.execute(["systemctl", "restart", "nfs-kernel-server"])
     for i in ["1", "2", "3"]:
         instance.execute(["touch", f"/data/test-{i}"])
-    address = instance.state().network["eth0"]["addresses"][0]["address"]
-    endpoint = f"nfs://{address}/data"
+    address = instance.state().network["eth0"]["addresses"][int(use_ipv6)]["address"]
+    if use_ipv6:
+        endpoint = f"nfs://[{address}]/data"
+    else:
+        endpoint = f"nfs://{address}/data"
     _logger.info(f"NFS share endpoint is {endpoint}")
     return endpoint

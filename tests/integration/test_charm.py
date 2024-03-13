@@ -11,7 +11,7 @@ from typing import Any, Coroutine
 
 import pytest
 import tenacity
-from helpers import bootstrap_nfs_server, modify_default_profile
+from helpers import bootstrap_nfs_server, modify_lxd_config
 from pylxd import Client
 from pytest_operator.plugin import OpsTest
 
@@ -26,12 +26,15 @@ NFS_SERVER_PROXY = "nfs-server-proxy"
 @pytest.mark.skip_if_deployed
 @pytest.mark.order(1)
 async def test_build_and_deploy(
-    ops_test: OpsTest, nfs_client_charm: Coroutine[Any, Any, pathlib.Path], charm_base: str
+    ops_test: OpsTest,
+    nfs_client_charm: Coroutine[Any, Any, pathlib.Path],
+    charm_base: str,
+    use_ipv6: bool,
 ) -> None:
     """Test that nfs-client can stabilize against nfs-server-proxy."""
     charm = str(await nfs_client_charm)
-    modify_default_profile()
-    endpoint = bootstrap_nfs_server()
+    modify_lxd_config(use_ipv6)
+    endpoint = bootstrap_nfs_server(use_ipv6)
     logger.info(f"Deploying {NFS_CLIENT} against {NFS_SERVER_PROXY} and {BASE}")
     await asyncio.gather(
         ops_test.model.deploy(
