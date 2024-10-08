@@ -8,10 +8,11 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import ops.testing
-import utils.manager as nfs
-from charm import NFSClientCharm
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.testing import Harness
+
+import utils.manager as nfs
+from charm import NFSClientCharm
 
 
 class TestNFSShare(unittest.TestCase):
