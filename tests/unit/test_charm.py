@@ -8,10 +8,11 @@ import unittest
 from unittest.mock import PropertyMock, patch
 
 import ops.testing
-import utils.manager as nfs
-from charm import NFSClientCharm
 from ops.model import BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.testing import Harness
+
+import utils.manager as nfs
+from charm import NFSClientCharm
 
 
 class TestCharm(unittest.TestCase):

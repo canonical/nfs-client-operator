@@ -6,7 +6,6 @@
 
 import logging
 
-import utils.manager as nfs
 from charms.storage_libs.v0.nfs_interfaces import (
     MountShareEvent,
     NFSRequires,
@@ -17,6 +16,8 @@ from ops.charm import ActionEvent, CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
+
+import utils.manager as nfs
 
 logger = logging.getLogger(__name__)
 
